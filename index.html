@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Recall+ — Demo</title>
+<meta name="robots" content="noindex" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  body { margin: 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState } = React;
+
+/* ---------- tiny inline icon set (no external icon lib) ---------- */
+const Icon = ({ children, size = 16, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    {children}
+  </svg>
+);
+const Mail = (p) => <Icon {...p}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 6-10 7L2 6" /></Icon>;
+const MousePointerClick = (p) => <Icon {...p}><path d="M9 9 5 21l3-1 3 3 3-9" /><path d="M13 13l6 6" /><path d="M9 2v3M4.6 4.6l2.1 2.1M2 9h3" /></Icon>;
+const UserCheck = (p) => <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="m17 11 2 2 4-4" /></Icon>;
+const TrendingUp = (p) => <Icon {...p}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></Icon>;
+const ChevronRight = (p) => <Icon {...p}><polyline points="9 18 15 12 9 6" /></Icon>;
+const ChevronLeft = (p) => <Icon {...p}><polyline points="15 18 9 12 15 6" /></Icon>;
+const Check = (p) => <Icon {...p}><polyline points="20 6 9 17 4 12" /></Icon>;
+const Calendar = (p) => <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></Icon>;
+const Users = (p) => <Icon {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></Icon>;
+const ArrowRight = (p) => <Icon {...p}><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></Icon>;
+const Sparkles = (p) => <Icon {...p}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2" /></Icon>;
+
+/* ---------- design tokens ---------- */
+const INK = "#122036";
+const PAPER = "#F4F5F1";
+const AMBER = "#C4832A";
+const TEAL = "#3C6E7A";
+const LINE = "#DBDDD6";
+const GOOD = "#4C7A5E";
+
+/* ---------- fake data ---------- */
+const SEGMENTS = [
+  { id: "lapsed", name: "Lapsed 12+ months", desc: "No appointment booked in the last year", count: 214 },
+  { id: "cl", name: "Contact lens reorder", desc: "Due a reorder within 10 days", count: 86 },
+  { id: "birthday", name: "Birthday this week", desc: "Patients with a birthday in the next 7 days", count: 12 },
+  { id: "warranty", name: "Frame warranty expiring", desc: "12-month warranty ends within 30 days", count: 47 },
+];
+
+const TEMPLATES = [
+  { id: "t1", name: "Lapsed win-back", subject: "It's been a while, {{first_name}} — book your check-up", preview: "Hi {{first_name}}, it's been over a year since your last eye test at {{practice_name}}. Your vision can change more than you'd expect — worth a quick check." },
+  { id: "t2", name: "CL reorder nudge", subject: "Running low? Your lenses are ready to reorder", preview: "Hi {{first_name}}, based on your last order you're likely due a fresh supply of {{cl_brand}}. Reorder online or give us a call." },
+  { id: "t3", name: "Birthday", subject: "Happy birthday from {{practice_name}} 🎂", preview: "Happy birthday, {{first_name}}! To celebrate, enjoy 15% off any frame this month." },
+  { id: "t4", name: "Warranty expiry", subject: "Your frame warranty ends soon", preview: "Hi {{first_name}}, your 12-month frame warranty expires on {{warranty_date}}. Pop in for a free adjustment before it lapses." },
+];
+
+const SAMPLE_PATIENT = { first_name: "Priya", practice_name: "Elm & Sight Opticians", cl_brand: "Acuvue Oasys", warranty_date: "14 Aug 2026" };
+
+function fillTemplate(str, data) {
+  return str.replace(/{{(.*?)}}/g, (_, k) => data[k.trim()] || `{{${k.trim()}}}`);
+}
+
+const PAST_CAMPAIGNS = [
+  { name: "Lapsed win-back — June", sent: 198, opened: 91, clicked: 34, date: "18 Jun" },
+  { name: "CL reorder — June", sent: 79, opened: 52, clicked: 41, date: "11 Jun" },
+  { name: "Birthday — May", sent: 44, opened: 30, clicked: 12, date: "May" },
+];
+
+const UPCOMING = [
+  { rule: "Lapsed 12mo", count: 23, when: "Tomorrow, 9:00am" },
+  { rule: "CL reorder", count: 9, when: "Fri, 9:00am" },
+  { rule: "Birthday", count: 3, when: "Mon, 8:00am" },
+];
+
+/* ---------- shared bits ---------- */
+function Eyebrow({ children }) {
+  return (
+    <div style={{ fontFamily: "'IBM Plex Mono', monospace" }} className="text-xs tracking-widest uppercase text-[#3C6E7A]">
+      {children}
+    </div>
+  );
+}
+
+function NavBar({ view, setView }) {
+  const tabs = [
+    { id: "landing", label: "Pitch page" },
+    { id: "dashboard", label: "Dashboard" },
+    { id: "builder", label: "New campaign" },
+  ];
+  return (
+    <div className="sticky top-0 z-20 border-b" style={{ borderColor: LINE, background: "rgba(244,245,241,0.92)", backdropFilter: "blur(6px)" }}>
+      <div className="max-w-5xl mx-auto flex items-center justify-between px-6 py-3">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full border-2" style={{ borderColor: INK }} />
+          <span style={{ fontFamily: "'Instrument Serif', serif" }} className="text-xl italic">Recall+</span>
+        </div>
+        <div className="flex gap-1">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setView(t.id)}
+              className="px-3 py-1.5 text-sm rounded-full transition"
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                background: view === t.id ? INK : "transparent",
+                color: view === t.id ? PAPER : INK,
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AcuityRow({ label, size, sub }) {
+  return (
+    <div className="flex items-baseline gap-4">
+      <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: AMBER, minWidth: 64 }} className="text-xs">
+        {label}
+      </span>
+      <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: size, lineHeight: 1.02, color: INK }}>
+        {sub}
+      </span>
+    </div>
+  );
+}
+
+/* ---------- landing ---------- */
+function Landing({ setView }) {
+  return (
+    <div className="max-w-5xl mx-auto px-6">
+      <section className="pt-16 pb-10">
+        <Eyebrow>Email &amp; SMS recall, built for independent opticians</Eyebrow>
+        <div className="mt-6 space-y-1">
+          <AcuityRow label="20/200" size="clamp(48px,9vw,110px)" sub="See your" />
+          <AcuityRow label="20/100" size="clamp(38px,7vw,84px)" sub="recall emails" />
+          <AcuityRow label="20/70" size="clamp(30px,5.5vw,60px)" sub="actually get opened" />
+          <AcuityRow label="20/40" size="clamp(22px,4vw,38px)" sub="not just sent into the void" />
+          <AcuityRow label="20/20" size="clamp(16px,2.6vw,24px)" sub="Recall+ — CSV in, campaigns out. No PMS replacement." />
+        </div>
+        <div className="mt-10 flex flex-wrap items-center gap-4">
+          <button
+            onClick={() => setView("dashboard")}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium"
+            style={{ background: INK, color: PAPER, fontFamily: "'Inter', sans-serif" }}
+          >
+            See a live demo <ArrowRight size={15} />
+          </button>
+          <span className="text-sm" style={{ color: "#6B7268", fontFamily: "'Inter', sans-serif" }}>
+            No sign-up. Fake data, real workflow.
+          </span>
+        </div>
+      </section>
+
+      <section className="grid md:grid-cols-3 gap-6 py-12 border-t" style={{ borderColor: LINE }}>
+        {[
+          { h: "The problem", b: "Your PMS treats marketing as an afterthought — a recall letter bolted onto patient records. No segmentation, no idea what's actually working." },
+          { h: "The fix", b: "Upload your patient export. Recall+ segments automatically — lapsed patients, CL reorders, birthdays, warranty expiry — and sends campaigns you can see the results of." },
+          { h: "The risk", b: "None. No system replacement, no data migration. CSV in, cancel any time. A three-month pilot costs less than one missed recall appointment." },
+        ].map((c) => (
+          <div key={c.h}>
+            <h3 style={{ fontFamily: "'Instrument Serif', serif" }} className="text-2xl italic mb-2">{c.h}</h3>
+            <p style={{ fontFamily: "'Inter', sans-serif", color: "#4A5049" }} className="text-sm leading-relaxed">{c.b}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="py-12 border-t" style={{ borderColor: LINE }}>
+        <Eyebrow>One ask</Eyebrow>
+        <p style={{ fontFamily: "'Instrument Serif', serif" }} className="text-3xl italic mt-3 max-w-2xl">
+          Send twelve months of patient data — we'll show you exactly what a month of campaigns looks like for your practice.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+/* ---------- dashboard ---------- */
+function StatCard({ icon: IconComp, label, value, sub }) {
+  return (
+    <div className="p-4 rounded-xl border" style={{ borderColor: LINE, background: "#FFFFFF" }}>
+      <div className="flex items-center gap-2" style={{ color: TEAL }}>
+        <IconComp size={16} />
+        <Eyebrow>{label}</Eyebrow>
+      </div>
+      <div style={{ fontFamily: "'Instrument Serif', serif" }} className="text-3xl mt-2">{value}</div>
+      {sub && <div className="text-xs mt-1" style={{ color: "#8A8F85", fontFamily: "'Inter', sans-serif" }}>{sub}</div>}
+    </div>
+  );
+}
+
+function Dashboard({ setView }) {
+  return (
+    <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <Eyebrow>Elm &amp; Sight Opticians</Eyebrow>
+          <h2 style={{ fontFamily: "'Instrument Serif', serif" }} className="text-3xl italic mt-1">Overview</h2>
+        </div>
+        <button
+          onClick={() => setView("builder")}
+          className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
+          style={{ background: INK, color: PAPER, fontFamily: "'Inter', sans-serif" }}
+        >
+          <Sparkles size={14} /> New campaign
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        <StatCard icon={Mail} label="Sent (30d)" value="321" sub="across 3 campaigns" />
+        <StatCard icon={UserCheck} label="Open rate" value="52%" sub="vs 38% industry avg" />
+        <StatCard icon={MousePointerClick} label="Click rate" value="21%" sub="booking link + reorder" />
+        <StatCard icon={TrendingUp} label="Re-booked" value="17" sub="attributed to campaigns" />
+      </div>
+
+      <div className="grid md:grid-cols-5 gap-8">
+        <div className="md:col-span-3">
+          <Eyebrow>20/20 — sent</Eyebrow>
+          <h3 style={{ fontFamily: "'Instrument Serif', serif" }} className="text-xl italic mt-1 mb-4">Recent campaigns</h3>
+          <div className="space-y-3">
+            {PAST_CAMPAIGNS.map((c) => (
+              <div key={c.name} className="p-4 rounded-xl border flex items-center justify-between" style={{ borderColor: LINE, background: "#fff" }}>
+                <div>
+                  <div style={{ fontFamily: "'Inter', sans-serif" }} className="text-sm font-medium">{c.name}</div>
+                  <div className="text-xs mt-0.5" style={{ color: "#8A8F85", fontFamily: "'Inter', sans-serif" }}>{c.date}</div>
+                </div>
+                <div className="flex gap-5 text-right" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                  <div><div className="text-xs" style={{ color: "#8A8F85" }}>sent</div><div className="text-sm">{c.sent}</div></div>
+                  <div><div className="text-xs" style={{ color: "#8A8F85" }}>opened</div><div className="text-sm" style={{ color: GOOD }}>{c.opened}</div></div>
+                  <div><div className="text-xs" style={{ color: "#8A8F85" }}>clicked</div><div className="text-sm" style={{ color: AMBER }}>{c.clicked}</div></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="md:col-span-2">
+          <Eyebrow>20/40 — queued</Eyebrow>
+          <h3 style={{ fontFamily: "'Instrument Serif', serif" }} className="text-xl italic mt-1 mb-4">Upcoming automated sends</h3>
+          <div className="space-y-3">
+            {UPCOMING.map((u) => (
+              <div key={u.rule} className="p-3 rounded-xl border" style={{ borderColor: LINE, background: "#fff" }}>
+                <div className="flex items-center justify-between">
+                  <span style={{ fontFamily: "'Inter', sans-serif" }} className="text-sm font-medium">{u.rule}</span>
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: TEAL }} className="text-xs">{u.count} patients</span>
+                </div>
+                <div className="text-xs mt-1 flex items-center gap-1" style={{ color: "#8A8F85", fontFamily: "'Inter', sans-serif" }}>
+                  <Calendar size={11} /> {u.when}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs mt-3" style={{ color: "#8A8F85", fontFamily: "'Inter', sans-serif" }}>
+            Rule-based sends wait for review — nothing goes out without a chance to pause it.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- campaign builder ---------- */
+function StepDot({ n, active, done }) {
+  return (
+    <div
+      className="w-7 h-7 rounded-full flex items-center justify-center text-xs"
+      style={{
+        fontFamily: "'IBM Plex Mono', monospace",
+        border: `1.5px solid ${active || done ? INK : LINE}`,
+        background: done ? INK : "transparent",
+        color: done ? PAPER : INK,
+      }}
+    >
+      {done ? <Check size={13} /> : n}
+    </div>
+  );
+}
+
+function Builder() {
+  const [step, setStep] = useState(0);
+  const [segment, setSegment] = useState(null);
+  const [template, setTemplate] = useState(null);
+  const [sendMode, setSendMode] = useState("now");
+  const [sent, setSent] = useState(false);
+
+  const steps = ["Segment", "Template", "Personalize", "Send"];
+  const canNext = [segment !== null, template !== null, true, true][step];
+
+  const selectedTemplate = TEMPLATES.find((t) => t.id === template);
+  const previewSubject = selectedTemplate ? fillTemplate(selectedTemplate.subject, SAMPLE_PATIENT) : "";
+  const previewBody = selectedTemplate ? fillTemplate(selectedTemplate.preview, SAMPLE_PATIENT) : "";
+
+  if (sent) {
+    const seg = SEGMENTS.find((s) => s.id === segment);
+    return (
+      <div className="max-w-2xl mx-auto px-6 py-20 text-center">
+        <div className="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-6" style={{ background: GOOD }}>
+          <Check color="#fff" size={24} />
+        </div>
+        <Eyebrow>20/20</Eyebrow>
+        <h2 style={{ fontFamily: "'Instrument Serif', serif" }} className="text-3xl italic mt-2">Campaign queued</h2>
+        <p style={{ fontFamily: "'Inter', sans-serif", color: "#4A5049" }} className="mt-3">
+          {seg?.count} patients in "{seg?.name}" will receive "{selectedTemplate?.name}" {sendMode === "now" ? "in the next few minutes" : "at the scheduled time"}.
+        </p>
+        <div className="mt-8 p-4 rounded-xl border inline-block text-left" style={{ borderColor: LINE, background: "#fff" }}>
+          <div className="text-xs" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#8A8F85" }}>simulated — no email sent</div>
+          <div style={{ fontFamily: "'Inter', sans-serif" }} className="text-sm mt-2">This is where real delivery/open/click stats would appear on your dashboard within minutes of sending.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto px-6 py-10">
+      <Eyebrow>New campaign</Eyebrow>
+      <div className="flex items-center gap-2 mt-4 mb-10">
+        {steps.map((s, i) => (
+          <React.Fragment key={s}>
+            <div className="flex items-center gap-2">
+              <StepDot n={i + 1} active={step === i} done={step > i} />
+              <span
+                style={{ fontFamily: "'Inter', sans-serif", color: step === i ? INK : "#9BA093" }}
+                className="text-sm hidden sm:inline"
+              >
+                {s}
+              </span>
+            </div>
+            {i < steps.length - 1 && <div className="flex-1 h-px" style={{ background: LINE }} />}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {step === 0 && (
+        <div>
+          <h3 style={{ fontFamily: "'Instrument Serif', serif" }} className="text-2xl italic mb-4">Who's this campaign for?</h3>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {SEGMENTS.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSegment(s.id)}
+                className="text-left p-4 rounded-xl border transition"
+                style={{
+                  borderColor: segment === s.id ? INK : LINE,
+                  background: segment === s.id ? "#EFEEE8" : "#fff",
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{s.name}</span>
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: TEAL }} className="text-xs">{s.count}</span>
+                </div>
+                <div className="text-xs mt-1" style={{ color: "#8A8F85" }}>{s.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {step === 1 && (
+        <div>
+          <h3 style={{ fontFamily: "'Instrument Serif', serif" }} className="text-2xl italic mb-4">Pick a template</h3>
+          <div className="space-y-3">
+            {TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTemplate(t.id)}
+                className="w-full text-left p-4 rounded-xl border transition"
+                style={{
+                  borderColor: template === t.id ? INK : LINE,
+                  background: template === t.id ? "#EFEEE8" : "#fff",
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                <div className="text-sm font-medium">{t.name}</div>
+                <div className="text-xs mt-1" style={{ color: "#8A8F85" }}>{t.subject}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div>
+          <h3 style={{ fontFamily: "'Instrument Serif', serif" }} className="text-2xl italic mb-4">Preview with a sample patient</h3>
+          <div className="p-5 rounded-xl border" style={{ borderColor: LINE, background: "#fff" }}>
+            <div className="text-xs mb-3" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#8A8F85" }}>
+              previewing as {SAMPLE_PATIENT.first_name}
+            </div>
+            <div style={{ fontFamily: "'Inter', sans-serif" }} className="text-sm font-semibold mb-2">{previewSubject}</div>
+            <div style={{ fontFamily: "'Inter', sans-serif", color: "#4A5049" }} className="text-sm leading-relaxed">{previewBody}</div>
+          </div>
+          <p className="text-xs mt-3" style={{ color: "#8A8F85", fontFamily: "'Inter', sans-serif" }}>
+            Merge fields fill in per-patient automatically at send time.
+          </p>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div>
+          <h3 style={{ fontFamily: "'Instrument Serif', serif" }} className="text-2xl italic mb-4">When should this send?</h3>
+          <div className="flex gap-3">
+            {[
+              { id: "now", label: "Send now" },
+              { id: "schedule", label: "Schedule for tomorrow, 9:00am" },
+            ].map((o) => (
+              <button
+                key={o.id}
+                onClick={() => setSendMode(o.id)}
+                className="px-4 py-3 rounded-xl border text-sm text-left flex-1"
+                style={{
+                  borderColor: sendMode === o.id ? INK : LINE,
+                  background: sendMode === o.id ? "#EFEEE8" : "#fff",
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-6 p-4 rounded-xl border text-sm" style={{ borderColor: LINE, background: "#fff", fontFamily: "'Inter', sans-serif" }}>
+            <div className="flex justify-between py-1"><span style={{ color: "#8A8F85" }}>Segment</span><span>{SEGMENTS.find(s => s.id === segment)?.name}</span></div>
+            <div className="flex justify-between py-1"><span style={{ color: "#8A8F85" }}>Recipients</span><span>{SEGMENTS.find(s => s.id === segment)?.count}</span></div>
+            <div className="flex justify-between py-1"><span style={{ color: "#8A8F85" }}>Template</span><span>{selectedTemplate?.name}</span></div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mt-10">
+        <button
+          disabled={step === 0}
+          onClick={() => setStep((s) => Math.max(0, s - 1))}
+          className="flex items-center gap-1 text-sm px-3 py-2 rounded-full disabled:opacity-0"
+          style={{ fontFamily: "'Inter', sans-serif", color: INK }}
+        >
+          <ChevronLeft size={15} /> Back
+        </button>
+        {step < 3 ? (
+          <button
+            disabled={!canNext}
+            onClick={() => setStep((s) => s + 1)}
+            className="flex items-center gap-1 text-sm px-5 py-2.5 rounded-full disabled:opacity-40"
+            style={{ fontFamily: "'Inter', sans-serif", background: INK, color: PAPER }}
+          >
+            Continue <ChevronRight size={15} />
+          </button>
+        ) : (
+          <button
+            onClick={() => setSent(true)}
+            className="flex items-center gap-1 text-sm px-5 py-2.5 rounded-full"
+            style={{ fontFamily: "'Inter', sans-serif", background: AMBER, color: "#fff" }}
+          >
+            Queue campaign <ArrowRight size={15} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- app ---------- */
+function App() {
+  const [view, setView] = useState("landing");
+  return (
+    <div style={{ background: PAPER, minHeight: "100vh", color: INK }}>
+      <NavBar view={view} setView={setView} />
+      {view === "landing" && <Landing setView={setView} />}
+      {view === "dashboard" && <Dashboard setView={setView} />}
+      {view === "builder" && <Builder key={view} />}
+      <div className="text-center text-xs py-8" style={{ color: "#9BA093", fontFamily: "'IBM Plex Mono', monospace" }}>
+        Recall+ — proof of concept. No real emails sent. No data stored.
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
